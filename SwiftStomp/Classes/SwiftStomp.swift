@@ -24,6 +24,7 @@ public enum StompRequestFrame : String {
     case ack = "ACK"
     case nack = "NACK"
     case disconnect = "DISCONNECT"
+    case heartbeat = "HEARTBEAT"
 }
 
 public enum StompResponseFrame : String{
@@ -371,7 +372,11 @@ fileprivate extension SwiftStomp{
         do{
             frame = try StompFrame(withSerializedString: text)
         }catch let ex{
-            stompLog(type: .stompError, message: "Process frame error: \(ex.localizedDescription)")
+            if text == "\n" {
+                self.checkForHeartbeat(for: text)
+            } else {
+                stompLog(type: .stompError, message: "Process frame error: \(ex.localizedDescription)")
+            }
             return
         }
         
@@ -443,11 +448,22 @@ fileprivate extension SwiftStomp{
             break
         }
             
-        let rawFrameToSend = frame.serialize()
+        let rawFrameToSend: String
+        if frame.name == .heartbeat {
+            rawFrameToSend = String(format: "%C", arguments: [0x0A])
+        } else {
+            rawFrameToSend = frame.serialize()
+        }
         
         stompLog(type: .info, message: "Stomp: Sending...\n\(rawFrameToSend)\n")
         
         self.socket.write(string: rawFrameToSend, completion: completion)
+    }
+    
+    private func checkForHeartbeat(for text: String) {
+        stompLog(type: .info, message: "Socket: Received Heartbeat")
+        let frame: StompFrame<StompRequestFrame> = StompFrame(name: .heartbeat)
+        self.sendFrame(frame: frame)
     }
 }
 
